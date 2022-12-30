@@ -1,5 +1,6 @@
 import tkinter as tk
 import enum
+import random
 
 class CellState(enum.Enum):
 	empty_not_hit = 1
@@ -9,20 +10,16 @@ class CellState(enum.Enum):
 
 
 class BoardState:
-	def __init__(self, width, height):
+	def __init__(self, width, height, can_see_ships):
 		self.width = width
 		self.height = height
 		self.state = [[0] * self.width] * self.height
 		self.state = []
-		# print(self.state)
+		self.can_see_ships = can_see_ships
 		for i in range(0, self.width):
 			self.state.append([])
 			for j in range(0, self.height):
 				self.state[-1].append(CellState.empty_not_hit)
-		# self.state[0][0] = CellState.empty_not_hit
-		# self.state[0][1] = CellState.empty_hit
-		# self.state[0][2] = CellState.ship_not_hit
-		# self.state[0][3] = CellState.ship_hit
 	def cell_state(self, x, y):
 		assert((0 <= x) and (x < GameConstants.BOARD_WIDTH) and (0 <= y) and (y < GameConstants.BOARD_HEIGHT))
 		return self.state[y][x]
@@ -48,16 +45,68 @@ class BoardState:
 		elif (state == CellState.empty_hit):
 			return 'blue'
 		elif (state == CellState.ship_not_hit):
-			return 'black'
+			return 'black' if self.can_see_ships else ''
 		elif (state == CellState.ship_hit):
 			return 'red'
 		else:
 			assert(False)
 
+	def can_place(self, x0, y0, length, is_vertical=False):
+		if(is_vertical):
+			dx = 0
+			dy = 1
+		else:
+			dx = 1
+			dy = 0
+		if((x0 < 0) or (y0 < 0) or (x0 >= self.width) or (y0 >= self.height)):
+			return False
+		x1 = x0 + length * dx
+		y1 = y0 + length * dy
+		if((x1 >= self.width) or (y1 >= self.height)):
+			return False
+		while((x0 <= x1) and (y0 <= y1)):
+			state = self.cell_state(x0, y0)
+			if(state != CellState.empty_not_hit):
+				return False
+			x0 += dx
+			y0 += dy
+		return True
+
+	def place_ship(self, x0, y0, length, is_vertical):
+		assert(self.can_place(x0, y0, length, is_vertical))
+		if(is_vertical):
+			dx = 0
+			dy = 1
+		else:
+			dx = 1
+			dy = 0
+		x1 = x0 + length * dx
+		y1 = y0 + length * dy
+
+		while((x0 <= x1) and (y0 <= y1)):
+			self.set_cell_state(x0, y0, CellState.ship_not_hit)
+			x0 += dx
+			y0 += dy
+
+
+class ComputerShipPlacement:
+	def __init__(self, place_for_ships):
+		self.place_for_ships = place_for_ships
+	def place_ships(self, ships):
+		i = 0
+		while i < len(ships):
+			length = ships[i]
+			x = random.randint(0, self.place_for_ships.width)
+			y = random.randint(0, self.place_for_ships.height)
+			direction = bool(random.getrandbits(1))
+			if(self.place_for_ships.can_place(x, y, length, direction)):
+				self.place_for_ships.place_ship(x, y, length, direction)
+				i += 1
+
 
 
 class BattleshipMap:
-	def __init__(self, canvas, x0, y0, x_max, y_max, height, width, border_width = 3):
+	def __init__(self, canvas, x0, y0, x_max, y_max, height, width, border_width = 3, can_see_ships = True):
 		assert((x0 < x_max) and (y0 < y_max))
 		assert((height > 0) and (width > 0))
 		self.canvas = canvas
@@ -68,8 +117,9 @@ class BattleshipMap:
 		self.height = height
 		self.width = width
 		self.border_width = border_width
+		self.can_see_ships = can_see_ships
 		self.map =  [ [ [0] * width ] * height ]
-		self.state = BoardState(width, height)
+		self.state = BoardState(width, height, can_see_ships)
 	def draw_board(self):
 		x_len, y_len = self.compute_lens()
 		for i in range(0, self.height):
@@ -97,6 +147,12 @@ class BattleshipMap:
 	def shoot(self, x, y):
 		self.state.shoot(x, y)
 
+	def can_place(self, x0, y0, length, vertical):
+		return self.state.can_place(x0, y0, length, vertical)
+
+	def place_ship(self, x0, y0, length, vertical):
+		self.state.place_ship(x0, y0, length, vertical)
+
 
 class GameConstants:
 	# BOARD_HEIGHT = 500
@@ -120,8 +176,14 @@ class Gameplay:
 		self.current_turn = starting_turn
 		self.player_map = player_map
 		self.computer_map = computer_map
+		computer_ship_placing = ComputerShipPlacement(computer_map)
+		computer_ship_placing.place_ships(GameConstants.SHIP_LENGTHS)
+		self.player_map.draw_board()
+		self.computer_map.draw_board()
+
 
 	def process_player_shot(self, x, y):
+		# TODO: patikrinti, kad zaidimas prasidejes
 		assert((x != -1) and (y != -1))
 		if(self.current_turn != Turn.PLAYER):
 			return
@@ -138,11 +200,13 @@ class GameGraphics:
 		self.canvas = tk.Canvas(window, bg="white", width=GameConstants.CANVAS_WIDTH, height=GameConstants.BOARD_DISPLAY_WIDTH)
 		self.canvas.pack()
 
-		self.player_map = BattleshipMap(self.canvas, 0, 0, GameConstants.BOARD_DISPLAY_WIDTH, GameConstants.BOARD_DISPLAY_HEIGHT, GameConstants.BOARD_WIDTH, GameConstants.BOARD_HEIGHT)
-		self.player_map.draw_board()
+		self.player_map = BattleshipMap(self.canvas, 0, 0, GameConstants.BOARD_DISPLAY_WIDTH, 
+			GameConstants.BOARD_DISPLAY_HEIGHT, GameConstants.BOARD_WIDTH, GameConstants.BOARD_HEIGHT, 
+			can_see_ships=True)
 
-		self.computer_map = BattleshipMap(self.canvas, GameConstants.BOARD_DISPLAY_WIDTH + GameConstants.BOARD_DISPLAY_GAP, 0, 2 * GameConstants.BOARD_DISPLAY_WIDTH + GameConstants.BOARD_DISPLAY_GAP, GameConstants.BOARD_DISPLAY_HEIGHT, GameConstants.BOARD_WIDTH, GameConstants.BOARD_HEIGHT)
-		self.computer_map.draw_board()
+		self.computer_map = BattleshipMap(self.canvas, GameConstants.BOARD_DISPLAY_WIDTH + GameConstants.BOARD_DISPLAY_GAP, 
+			0, 2 * GameConstants.BOARD_DISPLAY_WIDTH + GameConstants.BOARD_DISPLAY_GAP, GameConstants.BOARD_DISPLAY_HEIGHT,
+			GameConstants.BOARD_WIDTH, GameConstants.BOARD_HEIGHT, can_see_ships=False)
 
 		self.gameplay = Gameplay(self.player_map, self.computer_map)
 
