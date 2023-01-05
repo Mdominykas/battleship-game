@@ -60,8 +60,8 @@ class BoardState:
 			dy = 0
 		if((x0 < 0) or (y0 < 0) or (x0 >= self.width) or (y0 >= self.height)):
 			return False
-		x1 = x0 + length * dx
-		y1 = y0 + length * dy
+		x1 = x0 + (length - 1) * dx
+		y1 = y0 + (length - 1) * dy
 		if((x1 >= self.width) or (y1 >= self.height)):
 			return False
 		while((x0 <= x1) and (y0 <= y1)):
@@ -80,8 +80,8 @@ class BoardState:
 		else:
 			dx = 1
 			dy = 0
-		x1 = x0 + length * dx
-		y1 = y0 + length * dy
+		x1 = x0 + (length - 1) * dx
+		y1 = y0 + (length - 1) * dy
 
 		while((x0 <= x1) and (y0 <= y1)):
 			self.set_cell_state(x0, y0, CellState.ship_not_hit)
@@ -178,9 +178,10 @@ class Gameplay:
 		self.computer_map = computer_map
 		computer_ship_placing = ComputerShipPlacement(computer_map)
 		computer_ship_placing.place_ships(GameConstants.SHIP_LENGTHS)
+		player_ship_placement = ComputerShipPlacement(player_map)
+		player_ship_placement.place_ships(GameConstants.SHIP_LENGTHS)
 		self.player_map.draw_board()
 		self.computer_map.draw_board()
-
 
 	def process_player_shot(self, x, y):
 		# TODO: patikrinti, kad zaidimas prasidejes
@@ -191,7 +192,16 @@ class Gameplay:
 			return
 		self.computer_map.shoot(x, y)
 		self.computer_map.draw_board()
-		# TODO: pakeisti ejima
+		self.current_turn = Turn.COMPUTER
+		
+		shot_x = random.randint(0, self.player_map.width - 1)
+		shot_y = random.randint(0, self.player_map.height - 1)
+		while(not self.player_map.can_shoot(shot_x, shot_y)):
+			shot_x = random.randint(0, self.player_map.width - 1)
+			shot_y = random.randint(0, self.player_map.height - 1)
+		self.player_map.shoot(shot_x, shot_y)
+		self.current_turn = Turn.PLAYER
+		self.player_map.draw_board()
 
 
 
